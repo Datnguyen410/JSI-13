@@ -1,0 +1,88 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #0f172a;
+  color: white;
+}
+
+.container {
+  display: flex;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 220px;
+  background: #020617;
+  height: 100vh;
+  padding: 20px;
+}
+
+.sidebar h2 {
+  color: #38bdf8;
+}
+
+.sidebar a {
+  display: block;
+  color: #cbd5f5;
+  text-decoration: none;
+  margin: 15px 0;
+  transition: 0.2s;
+}
+
+.sidebar a:hover {
+  color: #38bdf8;
+}
+
+/* Main */
+.main {
+  flex: 1;
+  padding: 20px;
+}
+
+.header {
+  font-size: 24px;
+  margin-bottom: 20px;
+}
+
+.card {
+  background: #1e293b;
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 15px;
+}
+
+.card p {
+  margin: 0 0 10px 0;
+}
+
+.actions button {
+  margin-right: 10px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.approve {
+  background: #22c55e;
+  color: white;
+}
+
+.reject {
+  background: #ef4444;
+  color: white;
+}
+
+.delete {
+  background: #64748b;
+  color: white;
+}
+
+.notify {
+  background: #06b6d4;
+  color: white;
+}
+
+.notify:hover {
+  background: #0891b2;
+}

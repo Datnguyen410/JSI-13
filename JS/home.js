@@ -8,7 +8,6 @@ import {
   getDocs,
   query,
   where,
-  orderBy,
   serverTimestamp,
   updateDoc,
   doc,
@@ -51,24 +50,7 @@ const db = getFirestore(app);
 const postInput = document.getElementById("postInput");
 const postButton = document.getElementById("postButton");
 const postList = document.querySelector(".post-list");
-const notificationBox = document.getElementById("notificationBox");
-const STORAGE_KEY = "confess_posts_demo";
-const COMMENTS_KEY = "confess_post_comments";
-const NOTIFICATIONS_KEY = "confess_notifications";
-const USER_ID_KEY = "confess_user_id";
-let useFirestore = true;
 let approvedPostsCache = [];
-
-// 👤 Hệ thống userId: Tạo userId độc nhất cho mỗi user
-function getOrCreateUserId() {
-  let userId = localStorage.getItem(USER_ID_KEY);
-  if (!userId) {
-    userId =
-      "user_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
-    localStorage.setItem(USER_ID_KEY, userId);
-  }
-  return userId;
-}
 
 function getLoggedInUser() {
   const session = localStorage.getItem("confess_current_user");
@@ -76,7 +58,7 @@ function getLoggedInUser() {
 }
 
 const loggedInUser = getLoggedInUser();
-const currentUserId = loggedInUser?.id || getOrCreateUserId();
+const currentUserId = loggedInUser?.id || "anonymous";
 const currentUserName = loggedInUser?.name || "Người dùng ẩn danh";
 
 function buildPostPayload(content) {
@@ -100,168 +82,41 @@ function isPermissionError(error) {
   );
 }
 
-function getLocalComments() {
-  const raw = localStorage.getItem(COMMENTS_KEY);
-  return raw ? JSON.parse(raw) : {};
-}
-
-function saveLocalComments(comments) {
-  localStorage.setItem(COMMENTS_KEY, JSON.stringify(comments));
-}
-
-function getCommentsForPost(postId) {
-  const allComments = getLocalComments();
-  return allComments[postId] || [];
-}
-
-function addLocalComment(postId, comment) {
-  const allComments = getLocalComments();
-  allComments[postId] = allComments[postId] || [];
-  allComments[postId].push(comment);
-  saveLocalComments(allComments);
-}
-
-function mergeComments(post) {
-  const localComments = getCommentsForPost(post.id);
-  const firestoreComments = Array.isArray(post.comments) ? post.comments : [];
-  return [...firestoreComments, ...localComments];
-}
-
 function findCachedPost(postId) {
-  const found = approvedPostsCache.find((post) => post.id === postId);
-  if (found) return found;
-  const local = getLocalPosts().find((post) => post.id === postId);
-  return local || null;
+  return approvedPostsCache.find((post) => post.id === postId) || null;
 }
-
-function getLocalPosts() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  return raw ? JSON.parse(raw) : [];
-}
-
-function saveLocalPosts(posts) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
-}
-
-async function syncLocalPendingPostsToFirestore() {
-  if (!useFirestore) return;
-
-  const posts = getLocalPosts();
-  const pendingLocal = posts.filter(
-    (post) => post.status === "pending" && post._localPending,
-  );
-  if (pendingLocal.length === 0) return;
-
-  const remaining = [];
-  for (const post of pendingLocal) {
-    try {
-      await addDoc(collection(db, "posts"), {
-        content: post.content,
-        authorId: post.authorId || currentUserId,
-        authorName: post.authorName || currentUserName,
-        status: "pending",
-        createdAt: serverTimestamp(),
-        likes: post.likes || 0,
-        reposts: post.reposts || 0,
-        comments: post.comments || [],
-        reportCount: post.reportCount || 0,
-      });
-    } catch (error) {
-      if (isPermissionError(error)) {
-        useFirestore = false;
-        remaining.push(post);
-      } else {
-        remaining.push(post);
-      }
-    }
-  }
-
-  const syncedPosts = posts.filter(
-    (post) => !(post.status === "pending" && post._localPending),
-  );
-  saveLocalPosts(syncedPosts.concat(remaining));
-}
-
-// 🔔 Hàm load và hiển thị thông báo từ admin
-function loadNotifications() {
-  const raw = localStorage.getItem(NOTIFICATIONS_KEY);
-  const notifications = raw ? JSON.parse(raw) : [];
-
-  notificationBox.innerHTML = "";
-
-  // 👤 Lọc thông báo của user hiện tại và chưa đọc
-  const unreadNotifications = notifications.filter(
-    (n) => !n.read && n.userId === currentUserId,
-  );
-
-  if (unreadNotifications.length === 0) {
-    return;
-  }
-
-  unreadNotifications.forEach((notification) => {
-    const notifEl = document.createElement("div");
-    notifEl.className = "notification-alert";
-    notifEl.innerHTML = `
-            <div class="notification-content">
-              <strong>📬 Thông báo từ Admin</strong>
-              <p>${notification.message}</p>
-              <small style="color: #999;">Bài: "${notification.content.substring(0, 40)}..."</small>
-            </div>
-            <button class="notification-close" onclick="markNotificationAsRead('${notification.id}')">✕</button>
-          `;
-    notificationBox.appendChild(notifEl);
-  });
-}
-
-// Hàm đánh dấu thông báo là đã đọc
-window.markNotificationAsRead = (notificationId) => {
-  const raw = localStorage.getItem(NOTIFICATIONS_KEY);
-  const notifications = raw ? JSON.parse(raw) : [];
-  const notification = notifications.find((n) => n.id === notificationId);
-  if (notification) {
-    notification.read = true;
-    localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications));
-    loadNotifications();
-  }
-};
 
 async function loadApprovedPosts() {
   postList.innerHTML = "";
 
-  if (useFirestore) {
-    try {
-      const approvedQuery = query(
-        collection(db, "posts"),
-        where("status", "==", "approved"),
-      );
+  try {
+    const approvedQuery = query(
+      collection(db, "posts"),
+      where("status", "==", "approved"),
+    );
 
-      const snapshot = await getDocs(approvedQuery);
+    const snapshot = await getDocs(approvedQuery);
+    if (snapshot.empty) {
+      postList.innerHTML = `<p>Chưa có bài nào được duyệt.</p>`;
+      return;
+    }
 
-      if (snapshot.empty) {
-        postList.innerHTML = `<p>Chưa có bài nào được duyệt.</p>`;
-        return;
-      }
+    approvedPostsCache = snapshot.docs
+      .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
+      .sort((a, b) => {
+        const aTime = a.createdAt?.toMillis
+          ? a.createdAt.toMillis()
+          : a.createdAt || 0;
+        const bTime = b.createdAt?.toMillis
+          ? b.createdAt.toMillis()
+          : b.createdAt || 0;
+        return bTime - aTime;
+      });
 
-      approvedPostsCache = snapshot.docs
-        .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
-        .map((post) => ({
-          ...post,
-          comments: mergeComments(post),
-        }))
-        .sort((a, b) => {
-          const aTime = a.createdAt?.toMillis
-            ? a.createdAt.toMillis()
-            : a.createdAt || 0;
-          const bTime = b.createdAt?.toMillis
-            ? b.createdAt.toMillis()
-            : b.createdAt || 0;
-          return bTime - aTime;
-        });
-
-      approvedPostsCache.forEach((data) => {
-        const postItem = document.createElement("div");
-        postItem.className = "post-item";
-        postItem.innerHTML = `
+    approvedPostsCache.forEach((data) => {
+      const postItem = document.createElement("div");
+      postItem.className = "post-item";
+      postItem.innerHTML = `
             <p class="post-content">${data.content}</p>
             <div class="actions">
               <span class="action-btn like-btn" onclick="toggleLike('${data.id}')">❤️ ${data.likes || 0}</span>
@@ -277,58 +132,16 @@ async function loadApprovedPosts() {
               </div>
             </div>
           `;
-        postList.appendChild(postItem);
-      });
-      return;
-    } catch (error) {
-      if (isPermissionError(error)) {
-        useFirestore = false;
-        console.warn(
-          "Switching to demo fallback because of Firestore permissions.",
-          error,
-        );
-      } else {
-        throw error;
-      }
+      postList.appendChild(postItem);
+    });
+  } catch (error) {
+    if (isPermissionError(error)) {
+      console.error("Firestore permission error:", error);
+      postList.innerHTML = `<p>Không thể tải bài do lỗi quyền truy cập Firestore.</p>`;
+    } else {
+      throw error;
     }
   }
-
-  const posts = getLocalPosts()
-    .filter((post) => post.status === "approved")
-    .map((post) => ({
-      ...post,
-      comments: mergeComments(post),
-    }))
-    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-
-  approvedPostsCache = posts;
-
-  if (posts.length === 0) {
-    postList.innerHTML = `<p>Chưa có bài nào được duyệt.</p>`;
-    return;
-  }
-
-  posts.forEach((post) => {
-    const postItem = document.createElement("div");
-    postItem.className = "post-item";
-    postItem.innerHTML = `
-            <p class="post-content">${post.content}</p>
-            <div class="actions">
-              <span class="action-btn like-btn" onclick="toggleLike('${post.id}')">❤️ ${post.likes || 0}</span>
-              <span class="action-btn comment-btn" onclick="openCommentForm('${post.id}')">💬 ${(post.comments || []).length}</span>
-              <span class="action-btn repost-btn" onclick="toggleRepost('${post.id}')">🔄 ${post.reposts || 0}</span>
-              <span class="action-btn report-btn" onclick="reportPost('${post.id}')">⚠️ Report</span>
-            </div>
-            <div class="comments-section" id="comments-${post.id}" style="display: none;">
-              <div class="comments-list"></div>
-              <div class="comment-input">
-                <input type="text" class="comment-field" placeholder="Viết comment..." id="input-${post.id}" />
-                <button onclick="addComment('${post.id}')">Gửi</button>
-              </div>
-            </div>
-          `;
-    postList.appendChild(postItem);
-  });
 }
 
 postButton.addEventListener("click", async () => {
@@ -338,70 +151,28 @@ postButton.addEventListener("click", async () => {
     return;
   }
 
-  if (useFirestore) {
-    try {
-      await addDoc(collection(db, "posts"), buildPostPayload(content));
-      postInput.value = "";
-      alert("Bài đăng của bạn đã được gửi lên, chờ admin duyệt.");
-      return;
-    } catch (error) {
-      if (isPermissionError(error)) {
-        useFirestore = false;
-        console.warn(
-          "Switching to demo fallback because of Firestore permissions.",
-          error,
-        );
-      } else {
-        throw error;
-      }
+  try {
+    await addDoc(collection(db, "posts"), buildPostPayload(content));
+    postInput.value = "";
+    alert("Bài đăng của bạn đã được gửi lên, chờ admin duyệt.");
+  } catch (error) {
+    if (isPermissionError(error)) {
+      console.error("Firestore permission error:", error);
+      alert("Hiện tại không thể gửi bài do lỗi Firestore.");
+    } else {
+      throw error;
     }
   }
-
-  const posts = getLocalPosts();
-  posts.push({
-    id: Date.now().toString(),
-    userId: currentUserId,
-    authorId: currentUserId,
-    authorName: currentUserName,
-    content,
-    status: "pending",
-    createdAt: Date.now(),
-    likes: 0,
-    comments: [],
-    reposts: 0,
-    reportCount: 0,
-    _localPending: true,
-  });
-  saveLocalPosts(posts);
-  postInput.value = "";
-  alert(
-    "Bài đăng của bạn đã được lưu ở chế độ demo. Admin có thể duyệt trong session này.",
-  );
 });
 
 window.toggleLike = async (postId) => {
-  if (useFirestore) {
-    try {
-      await updateDoc(doc(db, "posts", postId), {
-        likes: increment(1),
-      });
-      await loadApprovedPosts();
-      return;
-    } catch (error) {
-      if (isPermissionError(error)) {
-        useFirestore = false;
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  const posts = getLocalPosts();
-  const post = posts.find((p) => p.id === postId);
-  if (post) {
-    post.likes = (post.likes || 0) + 1;
-    saveLocalPosts(posts);
-    loadApprovedPosts();
+  try {
+    await updateDoc(doc(db, "posts", postId), {
+      likes: increment(1),
+    });
+    await loadApprovedPosts();
+  } catch (error) {
+    console.error("Like failed:", error);
   }
 };
 
@@ -423,34 +194,22 @@ window.addComment = async (postId) => {
     return;
   }
 
-  const newComment = {
-    id: Date.now().toString(),
-    text: commentText,
-    reported: false,
-    createdAt: Date.now(),
-    authorId: currentUserId,
-  };
-
-  if (useFirestore) {
-    try {
-      await updateDoc(doc(db, "posts", postId), {
-        comments: arrayUnion(newComment),
-      });
-      if (input) input.value = "";
-      await loadApprovedPosts();
-      return;
-    } catch (error) {
-      if (isPermissionError(error)) {
-        useFirestore = false;
-      } else {
-        console.warn("Comment Firestore failed", error);
-      }
-    }
+  try {
+    await updateDoc(doc(db, "posts", postId), {
+      comments: arrayUnion({
+        id: Date.now().toString(),
+        text: commentText,
+        reported: false,
+        createdAt: serverTimestamp(),
+        authorId: currentUserId,
+      }),
+    });
+    if (input) input.value = "";
+    await loadApprovedPosts();
+  } catch (error) {
+    console.error("Comment failed:", error);
+    alert("Không thể thêm comment vì lỗi Firestore.");
   }
-
-  addLocalComment(postId, newComment);
-  if (input) input.value = "";
-  renderComments(postId);
 };
 
 window.renderComments = (postId) => {
@@ -460,10 +219,10 @@ window.renderComments = (postId) => {
   );
   if (!listContainer || !post) return;
 
-  const comments = mergeComments(post);
+  const comments = Array.isArray(post.comments) ? post.comments : [];
 
   listContainer.innerHTML = "";
-  if (!comments || comments.length === 0) {
+  if (comments.length === 0) {
     listContainer.innerHTML = `<p style="font-size: 12px; color: #999;">Chưa có comment nào.</p>`;
     return;
   }
@@ -480,44 +239,17 @@ window.renderComments = (postId) => {
 };
 
 window.reportComment = (postId, commentId) => {
-  const posts = getLocalPosts();
-  const post = posts.find((p) => p.id === postId);
-  if (post && post.comments) {
-    const comment = post.comments.find((c) => c.id === commentId);
-    if (comment) {
-      if (confirm("Bạn chắc chắn muốn report comment này?")) {
-        post.comments = post.comments.filter((c) => c.id !== commentId);
-        saveLocalPosts(posts);
-        renderComments(postId);
-      }
-    }
-  }
+  alert("Tính năng report sẽ được cập nhật sau.");
 };
 
 window.toggleRepost = async (postId) => {
-  if (useFirestore) {
-    try {
-      await updateDoc(doc(db, "posts", postId), {
-        reposts: increment(1),
-      });
-      await loadApprovedPosts();
-      return;
-    } catch (error) {
-      if (isPermissionError(error)) {
-        useFirestore = false;
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  const posts = getLocalPosts();
-  const post = posts.find((p) => p.id === postId);
-  if (post) {
-    post.reposts = (post.reposts || 0) + 1;
-    saveLocalPosts(posts);
-    alert("Bạn đã repost bài này.");
-    loadApprovedPosts();
+  try {
+    await updateDoc(doc(db, "posts", postId), {
+      reposts: increment(1),
+    });
+    await loadApprovedPosts();
+  } catch (error) {
+    console.error("Repost failed:", error);
   }
 };
 
@@ -527,8 +259,6 @@ window.reportPost = (postId) => {
   }
 };
 
-window.addEventListener("DOMContentLoaded", async () => {
-  loadNotifications();
-  await syncLocalPendingPostsToFirestore();
+window.addEventListener("DOMContentLoaded", () => {
   loadApprovedPosts();
 });

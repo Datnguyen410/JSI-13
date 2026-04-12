@@ -10,6 +10,10 @@ import {
   where,
   orderBy,
   serverTimestamp,
+  updateDoc,
+  doc,
+  arrayUnion,
+  increment,
 } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
@@ -49,9 +53,11 @@ const postButton = document.getElementById("postButton");
 const postList = document.querySelector(".post-list");
 const notificationBox = document.getElementById("notificationBox");
 const STORAGE_KEY = "confess_posts_demo";
+const COMMENTS_KEY = "confess_post_comments";
 const NOTIFICATIONS_KEY = "confess_notifications";
 const USER_ID_KEY = "confess_user_id";
 let useFirestore = true;
+let approvedPostsCache = [];
 
 // 👤 Hệ thống userId: Tạo userId độc nhất cho mỗi user
 function getOrCreateUserId() {
@@ -92,6 +98,40 @@ function isPermissionError(error) {
     error?.code === "permission-denied" ||
     /permission/i.test(error?.message || "")
   );
+}
+
+function getLocalComments() {
+  const raw = localStorage.getItem(COMMENTS_KEY);
+  return raw ? JSON.parse(raw) : {};
+}
+
+function saveLocalComments(comments) {
+  localStorage.setItem(COMMENTS_KEY, JSON.stringify(comments));
+}
+
+function getCommentsForPost(postId) {
+  const allComments = getLocalComments();
+  return allComments[postId] || [];
+}
+
+function addLocalComment(postId, comment) {
+  const allComments = getLocalComments();
+  allComments[postId] = allComments[postId] || [];
+  allComments[postId].push(comment);
+  saveLocalComments(allComments);
+}
+
+function mergeComments(post) {
+  const localComments = getCommentsForPost(post.id);
+  const firestoreComments = Array.isArray(post.comments) ? post.comments : [];
+  return [...firestoreComments, ...localComments];
+}
+
+function findCachedPost(postId) {
+  const found = approvedPostsCache.find((post) => post.id === postId);
+  if (found) return found;
+  const local = getLocalPosts().find((post) => post.id === postId);
+  return local || null;
 }
 
 function getLocalPosts() {
@@ -193,7 +233,6 @@ async function loadApprovedPosts() {
       const approvedQuery = query(
         collection(db, "posts"),
         where("status", "==", "approved"),
-        orderBy("createdAt", "desc"),
       );
 
       const snapshot = await getDocs(approvedQuery);
@@ -203,11 +242,41 @@ async function loadApprovedPosts() {
         return;
       }
 
-      snapshot.forEach((docItem) => {
-        const data = docItem.data();
+      approvedPostsCache = snapshot.docs
+        .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
+        .map((post) => ({
+          ...post,
+          comments: mergeComments(post),
+        }))
+        .sort((a, b) => {
+          const aTime = a.createdAt?.toMillis
+            ? a.createdAt.toMillis()
+            : a.createdAt || 0;
+          const bTime = b.createdAt?.toMillis
+            ? b.createdAt.toMillis()
+            : b.createdAt || 0;
+          return bTime - aTime;
+        });
+
+      approvedPostsCache.forEach((data) => {
         const postItem = document.createElement("div");
         postItem.className = "post-item";
-        postItem.textContent = data.content;
+        postItem.innerHTML = `
+            <p class="post-content">${data.content}</p>
+            <div class="actions">
+              <span class="action-btn like-btn" onclick="toggleLike('${data.id}')">❤️ ${data.likes || 0}</span>
+              <span class="action-btn comment-btn" onclick="openCommentForm('${data.id}')">💬 ${(data.comments || []).length}</span>
+              <span class="action-btn repost-btn" onclick="toggleRepost('${data.id}')">🔄 ${data.reposts || 0}</span>
+              <span class="action-btn report-btn" onclick="reportPost('${data.id}')">⚠️ Report</span>
+            </div>
+            <div class="comments-section" id="comments-${data.id}" style="display: none;">
+              <div class="comments-list"></div>
+              <div class="comment-input">
+                <input type="text" class="comment-field" placeholder="Viết comment..." id="input-${data.id}" />
+                <button onclick="addComment('${data.id}')">Gửi</button>
+              </div>
+            </div>
+          `;
         postList.appendChild(postItem);
       });
       return;
@@ -226,7 +295,13 @@ async function loadApprovedPosts() {
 
   const posts = getLocalPosts()
     .filter((post) => post.status === "approved")
+    .map((post) => ({
+      ...post,
+      comments: mergeComments(post),
+    }))
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  approvedPostsCache = posts;
 
   if (posts.length === 0) {
     postList.innerHTML = `<p>Chưa có bài nào được duyệt.</p>`;
@@ -304,7 +379,23 @@ postButton.addEventListener("click", async () => {
   );
 });
 
-window.toggleLike = (postId) => {
+window.toggleLike = async (postId) => {
+  if (useFirestore) {
+    try {
+      await updateDoc(doc(db, "posts", postId), {
+        likes: increment(1),
+      });
+      await loadApprovedPosts();
+      return;
+    } catch (error) {
+      if (isPermissionError(error)) {
+        useFirestore = false;
+      } else {
+        throw error;
+      }
+    }
+  }
+
   const posts = getLocalPosts();
   const post = posts.find((p) => p.id === postId);
   if (post) {
@@ -324,7 +415,7 @@ window.openCommentForm = (postId) => {
   }
 };
 
-window.addComment = (postId) => {
+window.addComment = async (postId) => {
   const input = document.getElementById(`input-${postId}`);
   const commentText = input?.value.trim();
   if (!commentText) {
@@ -332,36 +423,52 @@ window.addComment = (postId) => {
     return;
   }
 
-  const posts = getLocalPosts();
-  const post = posts.find((p) => p.id === postId);
-  if (post) {
-    if (!post.comments) post.comments = [];
-    post.comments.push({
-      id: Date.now().toString(),
-      text: commentText,
-      reported: false,
-    });
-    saveLocalPosts(posts);
-    if (input) input.value = "";
-    renderComments(postId);
+  const newComment = {
+    id: Date.now().toString(),
+    text: commentText,
+    reported: false,
+    createdAt: Date.now(),
+    authorId: currentUserId,
+  };
+
+  if (useFirestore) {
+    try {
+      await updateDoc(doc(db, "posts", postId), {
+        comments: arrayUnion(newComment),
+      });
+      if (input) input.value = "";
+      await loadApprovedPosts();
+      return;
+    } catch (error) {
+      if (isPermissionError(error)) {
+        useFirestore = false;
+      } else {
+        console.warn("Comment Firestore failed", error);
+      }
+    }
   }
+
+  addLocalComment(postId, newComment);
+  if (input) input.value = "";
+  renderComments(postId);
 };
 
 window.renderComments = (postId) => {
-  const posts = getLocalPosts();
-  const post = posts.find((p) => p.id === postId);
+  const post = findCachedPost(postId);
   const listContainer = document.querySelector(
     `#comments-${postId} .comments-list`,
   );
   if (!listContainer || !post) return;
 
+  const comments = mergeComments(post);
+
   listContainer.innerHTML = "";
-  if (!post.comments || post.comments.length === 0) {
+  if (!comments || comments.length === 0) {
     listContainer.innerHTML = `<p style="font-size: 12px; color: #999;">Chưa có comment nào.</p>`;
     return;
   }
 
-  post.comments.forEach((comment) => {
+  comments.forEach((comment) => {
     const commentEl = document.createElement("div");
     commentEl.className = "comment-item";
     commentEl.innerHTML = `
@@ -387,7 +494,23 @@ window.reportComment = (postId, commentId) => {
   }
 };
 
-window.toggleRepost = (postId) => {
+window.toggleRepost = async (postId) => {
+  if (useFirestore) {
+    try {
+      await updateDoc(doc(db, "posts", postId), {
+        reposts: increment(1),
+      });
+      await loadApprovedPosts();
+      return;
+    } catch (error) {
+      if (isPermissionError(error)) {
+        useFirestore = false;
+      } else {
+        throw error;
+      }
+    }
+  }
+
   const posts = getLocalPosts();
   const post = posts.find((p) => p.id === postId);
   if (post) {

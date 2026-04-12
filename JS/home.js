@@ -31,6 +31,19 @@ const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
 const db = getFirestore(app);
 
+// Firestore schema:
+// Collection: posts
+// Document fields:
+//   content: string
+//   authorId: string
+//   authorName: string
+//   status: string (pending | approved | rejected)
+//   createdAt: timestamp
+//   likes: number
+//   reposts: number
+//   comments: array
+//   reportCount: number
+
 const postInput = document.getElementById("postInput");
 const postButton = document.getElementById("postButton");
 const postList = document.querySelector(".post-list");
@@ -51,7 +64,28 @@ function getOrCreateUserId() {
   return userId;
 }
 
-const currentUserId = getOrCreateUserId();
+function getLoggedInUser() {
+  const session = localStorage.getItem("confess_current_user");
+  return session ? JSON.parse(session) : null;
+}
+
+const loggedInUser = getLoggedInUser();
+const currentUserId = loggedInUser?.id || getOrCreateUserId();
+const currentUserName = loggedInUser?.name || "Người dùng ẩn danh";
+
+function buildPostPayload(content) {
+  return {
+    content,
+    authorId: currentUserId,
+    authorName: currentUserName,
+    status: "pending",
+    createdAt: serverTimestamp(),
+    likes: 0,
+    reposts: 0,
+    comments: [],
+    reportCount: 0,
+  };
+}
 
 function isPermissionError(error) {
   return (
@@ -67,6 +101,45 @@ function getLocalPosts() {
 
 function saveLocalPosts(posts) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
+}
+
+async function syncLocalPendingPostsToFirestore() {
+  if (!useFirestore) return;
+
+  const posts = getLocalPosts();
+  const pendingLocal = posts.filter(
+    (post) => post.status === "pending" && post._localPending,
+  );
+  if (pendingLocal.length === 0) return;
+
+  const remaining = [];
+  for (const post of pendingLocal) {
+    try {
+      await addDoc(collection(db, "posts"), {
+        content: post.content,
+        authorId: post.authorId || currentUserId,
+        authorName: post.authorName || currentUserName,
+        status: "pending",
+        createdAt: serverTimestamp(),
+        likes: post.likes || 0,
+        reposts: post.reposts || 0,
+        comments: post.comments || [],
+        reportCount: post.reportCount || 0,
+      });
+    } catch (error) {
+      if (isPermissionError(error)) {
+        useFirestore = false;
+        remaining.push(post);
+      } else {
+        remaining.push(post);
+      }
+    }
+  }
+
+  const syncedPosts = posts.filter(
+    (post) => !(post.status === "pending" && post._localPending),
+  );
+  saveLocalPosts(syncedPosts.concat(remaining));
 }
 
 // 🔔 Hàm load và hiển thị thông báo từ admin
@@ -192,11 +265,7 @@ postButton.addEventListener("click", async () => {
 
   if (useFirestore) {
     try {
-      await addDoc(collection(db, "posts"), {
-        content,
-        status: "pending",
-        createdAt: serverTimestamp(),
-      });
+      await addDoc(collection(db, "posts"), buildPostPayload(content));
       postInput.value = "";
       alert("Bài đăng của bạn đã được gửi lên, chờ admin duyệt.");
       return;
@@ -217,12 +286,16 @@ postButton.addEventListener("click", async () => {
   posts.push({
     id: Date.now().toString(),
     userId: currentUserId,
+    authorId: currentUserId,
+    authorName: currentUserName,
     content,
     status: "pending",
     createdAt: Date.now(),
     likes: 0,
     comments: [],
     reposts: 0,
+    reportCount: 0,
+    _localPending: true,
   });
   saveLocalPosts(posts);
   postInput.value = "";
@@ -331,7 +404,8 @@ window.reportPost = (postId) => {
   }
 };
 
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
   loadNotifications();
+  await syncLocalPendingPostsToFirestore();
   loadApprovedPosts();
 });

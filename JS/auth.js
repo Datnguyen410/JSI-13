@@ -1,4 +1,5 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-analytics.js";
 import {
   getFirestore,
   collection,
@@ -7,7 +8,7 @@ import {
   query,
   where,
   serverTimestamp,
-} from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+} from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBkRVxum-TEk1f3KGjOQw3KAY8j1S8wiq8",
@@ -20,6 +21,7 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 const db = getFirestore(app);
 const usersCollection = collection(db, "users");
 
@@ -30,7 +32,10 @@ function showError(message) {
   const box = document.createElement("div");
   box.className = "message-box";
   box.textContent = message;
-  document.querySelector(".auth-card").insertAdjacentElement("afterbegin", box);
+  const card = document.querySelector(".auth-card");
+  if (card) {
+    card.insertAdjacentElement("afterbegin", box);
+  }
 }
 
 function saveSession(user) {
@@ -40,7 +45,10 @@ function saveSession(user) {
 async function findUserByEmail(email) {
   const q = query(usersCollection, where("email", "==", email));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  return snapshot.docs.map((docItem) => ({
+    id: docItem.id,
+    ...docItem.data(),
+  }));
 }
 
 async function registerUser({ name, email, password }) {
@@ -96,7 +104,7 @@ function initLoginPage() {
       });
       window.location.href = "./Home.html";
     } catch (error) {
-      showError(error.message);
+      showError(error.message || "Đã có lỗi xảy ra.");
     }
   });
 }
@@ -128,7 +136,7 @@ function initSignupPage() {
       saveSession(user);
       window.location.href = "./Home.html";
     } catch (error) {
-      showError(error.message);
+      showError(error.message || "Đã có lỗi xảy ra.");
     }
   });
 }

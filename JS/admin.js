@@ -60,7 +60,6 @@ async function loadPosts() {
       const q = query(
         collection(db, "posts"),
         where("status", "==", "pending"),
-        orderBy("createdAt", "desc"),
       );
 
       const snapshot = await getDocs(q);

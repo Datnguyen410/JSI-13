@@ -148,13 +148,19 @@
 
       <!-- 🔔 Bộ lọc thông báo -->
       <div class="filter-tabs">
-        <button class="filter-btn active" onclick="filterNotifications('all')">
+        <button
+          class="filter-btn active"
+          onclick="filterNotifications('all', event)"
+        >
           Tất cả
         </button>
-        <button class="filter-btn" onclick="filterNotifications('unread')">
+        <button
+          class="filter-btn"
+          onclick="filterNotifications('unread', event)"
+        >
           Chưa đọc
         </button>
-        <button class="filter-btn" onclick="filterNotifications('read')">
+        <button class="filter-btn" onclick="filterNotifications('read', event)">
           Đã đọc
         </button>
       </div>
@@ -163,12 +169,38 @@
       <div id="notificationsList"></div>
     </div>
 
-    <script>
-      // 👤 Hệ thống userId
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+      import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-analytics.js";
+      import {
+        getFirestore,
+        collection,
+        getDocs,
+        query,
+        where,
+        orderBy,
+        updateDoc,
+        deleteDoc,
+        doc,
+      } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyBkRVxum-TEk1f3KGjOQw3KAY8j1S8wiq8",
+        authDomain: "project-a830b.firebaseapp.com",
+        projectId: "project-a830b",
+        storageBucket: "project-a830b.firebasestorage.app",
+        messagingSenderId: "1094924509327",
+        appId: "1:1094924509327:web:6d1eb75aec1f8cb59a10fa",
+        measurementId: "G-6FQNVDQVSP",
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const analytics = getAnalytics(app);
+      const db = getFirestore(app);
+
       const USER_ID_KEY = "confess_user_id";
-      const NOTIFICATIONS_KEY = "confess_notifications";
-      const POSTS_KEY = "confess_posts_demo";
       let currentFilter = "all";
+      const currentUserId = getOrCreateUserId();
 
       function getOrCreateUserId() {
         let userId = localStorage.getItem(USER_ID_KEY);
@@ -183,20 +215,23 @@
         return userId;
       }
 
-      const currentUserId = getOrCreateUserId();
-
-      // 📌 Lấy tất cả thông báo của user hiện tại
-      function getUserNotifications() {
-        const raw = localStorage.getItem(NOTIFICATIONS_KEY);
-        const notifications = raw ? JSON.parse(raw) : [];
-        return notifications
-          .filter((n) => n.userId === currentUserId)
-          .sort((a, b) => b.timestamp - a.timestamp);
+      async function getUserNotifications() {
+        const notificationsQuery = query(
+          collection(db, "notifications"),
+          where("userId", "==", currentUserId),
+          orderBy("timestamp", "desc"),
+        );
+        const snapshot = await getDocs(notificationsQuery);
+        const notifications = [];
+        snapshot.forEach((docItem) => {
+          const notification = docItem.data();
+          notification.id = docItem.id;
+          notifications.push(notification);
+        });
+        return notifications;
       }
 
-      // 📌 Lấy thông báo theo filter
-      function getFilteredNotifications(filter) {
-        const notifications = getUserNotifications();
+      function getFilteredNotifications(notifications, filter) {
         if (filter === "unread") {
           return notifications.filter((n) => !n.read);
         } else if (filter === "read") {
@@ -205,101 +240,107 @@
         return notifications;
       }
 
-      // 📌 Render danh sách thông báo
-      function renderNotifications() {
+      async function renderNotifications() {
         const container = document.getElementById("notificationsList");
-        const notifications = getFilteredNotifications(currentFilter);
-
         container.innerHTML = "";
 
-        if (notifications.length === 0) {
-          container.innerHTML = `
-            <div class="empty-state">
-              <p>📭 Không có thông báo nào</p>
-            </div>
-          `;
+        try {
+          const notifications = await getFilteredNotifications(
+            await getUserNotifications(),
+            currentFilter,
+          );
+
+          if (notifications.length === 0) {
+            container.innerHTML = `
+              <div class="empty-state">
+                <p>📭 Không có thông báo nào</p>
+              </div>
+            `;
+            return;
+          }
+
+          notifications.forEach((notif) => {
+            const date = new Date(
+              notif.timestamp?.seconds
+                ? notif.timestamp.seconds * 1000
+                : notif.timestamp || 0,
+            );
+            const timeStr = date.toLocaleString("vi-VN");
+            const cardClass = notif.read
+              ? "notification-card read"
+              : "notification-card";
+
+            const card = document.createElement("div");
+            card.className = cardClass;
+            card.innerHTML = `
+              <div class="notification-header">
+                <span class="notification-title">📬 Thông báo từ Admin</span>
+                <span class="notification-time">${timeStr}</span>
+              </div>
+              <div class="notification-message">
+                ${notif.message}
+              </div>
+              <div class="notification-post-preview">
+                <strong>Bài viết:</strong> "${notif.content?.substring(0, 60) || ""}${notif.content?.length > 60 ? "..." : ""}"
+              </div>
+              <div class="notification-actions">
+                ${
+                  !notif.read
+                    ? `<button class="btn btn-mark-read" onclick="markAsRead('${notif.id}')">
+                         ✓ Đánh dấu đã đọc
+                       </button>`
+                    : `<button class="btn btn-mark-read" style="opacity: 0.5;" disabled>
+                         ✓ Đã đọc
+                       </button>`
+                }
+                <button class="btn btn-delete" onclick="deleteNotification('${notif.id}')">
+                  🗑️ Xóa
+                </button>
+              </div>
+            `;
+            container.appendChild(card);
+          });
+        } catch (error) {
+          console.error("Failed to load notifications", error);
+          container.innerHTML = `<div class="empty-state"><p>Không thể tải thông báo.</p></div>`;
+        }
+      }
+
+      window.markAsRead = async (notificationId) => {
+        try {
+          await updateDoc(doc(db, "notifications", notificationId), {
+            read: true,
+          });
+          await renderNotifications();
+        } catch (error) {
+          console.error("Failed to mark notification as read", error);
+        }
+      };
+
+      window.deleteNotification = async (notificationId) => {
+        if (!confirm("Bạn có chắc muốn xóa thông báo này?")) {
           return;
         }
 
-        notifications.forEach((notif) => {
-          const date = new Date(notif.timestamp);
-          const timeStr = date.toLocaleString("vi-VN");
-          const cardClass = notif.read
-            ? "notification-card read"
-            : "notification-card";
-
-          const card = document.createElement("div");
-          card.className = cardClass;
-          card.innerHTML = `
-            <div class="notification-header">
-              <span class="notification-title">📬 Thông báo từ Admin</span>
-              <span class="notification-time">${timeStr}</span>
-            </div>
-            <div class="notification-message">
-              ${notif.message}
-            </div>
-            <div class="notification-post-preview">
-              <strong>Bài viết:</strong> "${notif.content.substring(0, 60)}${notif.content.length > 60 ? "..." : ""}"
-            </div>
-            <div class="notification-actions">
-              ${
-                !notif.read
-                  ? `<button class="btn btn-mark-read" onclick="markAsRead('${notif.id}')">
-                       ✓ Đánh dấu đã đọc
-                     </button>`
-                  : `<button class="btn btn-mark-read" style="opacity: 0.5;" disabled>
-                       ✓ Đã đọc
-                     </button>`
-              }
-              <button class="btn btn-delete" onclick="deleteNotification('${notif.id}')">
-                🗑️ Xóa
-              </button>
-            </div>
-          `;
-          container.appendChild(card);
-        });
-      }
-
-      // 📌 Đánh dấu thông báo đã đọc
-      window.markAsRead = (notificationId) => {
-        const raw = localStorage.getItem(NOTIFICATIONS_KEY);
-        const notifications = raw ? JSON.parse(raw) : [];
-        const notif = notifications.find((n) => n.id === notificationId);
-        if (notif) {
-          notif.read = true;
-          localStorage.setItem(
-            NOTIFICATIONS_KEY,
-            JSON.stringify(notifications),
-          );
-          renderNotifications();
+        try {
+          await deleteDoc(doc(db, "notifications", notificationId));
+          await renderNotifications();
+        } catch (error) {
+          console.error("Failed to delete notification", error);
         }
       };
 
-      // 📌 Xóa thông báo
-      window.deleteNotification = (notificationId) => {
-        if (confirm("Bạn có chắc muốn xóa thông báo này?")) {
-          const raw = localStorage.getItem(NOTIFICATIONS_KEY);
-          const notifications = raw ? JSON.parse(raw) : [];
-          const filtered = notifications.filter((n) => n.id !== notificationId);
-          localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(filtered));
-          renderNotifications();
-        }
-      };
-
-      // 📌 Lọc thông báo
-      window.filterNotifications = (filter) => {
+      window.filterNotifications = async (filter, event) => {
         currentFilter = filter;
 
-        // Update active button
         document.querySelectorAll(".filter-btn").forEach((btn) => {
           btn.classList.remove("active");
         });
-        event.target.classList.add("active");
+        event?.target?.classList.add("active");
 
-        renderNotifications();
+        await renderNotifications();
       };
 
-      // Load thông báo khi trang load
       window.addEventListener("DOMContentLoaded", renderNotifications);
     </script>
   </body>

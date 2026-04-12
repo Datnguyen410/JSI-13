@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Đăng nhập · 🔥Confess</title>
+    <title>Đăng ký · 🔥Confess</title>
     <link rel="stylesheet" href="../CSS/auth.css" />
   </head>
   <body class="auth-page">
@@ -20,11 +20,22 @@
       <div class="auth-card">
         <div class="logo">
           <div class="logo-icon">🔥</div>
-          <h1>Đăng nhập</h1>
+          <h1>Đăng ký</h1>
         </div>
-        <p class="subtitle">Thay lời bạn muốn nói</p>
+        <p class="subtitle">Bắt đầu chia sẻ bí mật của bạn ngay hôm nay</p>
 
-        <form class="auth-form" id="login-form">
+        <form class="auth-form" id="signup-form">
+          <div class="field">
+            <label for="name">Tên hiển thị</label>
+            <input
+              type="text"
+              id="name"
+              name="name"
+              placeholder="Nhập tên bạn"
+              required
+              autocomplete="name"
+            />
+          </div>
           <div class="field">
             <label for="email">Email</label>
             <input
@@ -44,14 +55,26 @@
               name="password"
               placeholder="••••••••"
               required
-              autocomplete="current-password"
+              autocomplete="new-password"
             />
           </div>
-          <button type="submit" class="btn-submit">Đăng nhập</button>
+          <div class="field">
+            <label for="confirmPassword">Xác nhận mật khẩu</label>
+            <input
+              type="password"
+              id="confirmPassword"
+              name="confirmPassword"
+              placeholder="Nhập lại mật khẩu"
+              required
+              autocomplete="new-password"
+            />
+          </div>
+
+          <button type="submit" class="btn-submit">Tạo tài khoản</button>
         </form>
 
         <div class="auth-footer">
-          Chưa có tài khoản? <a href="signup.html">Đăng ký ngay</a>
+          Đã có tài khoản? <a href="login.html">Đăng nhập ngay</a>
         </div>
       </div>
     </div>

@@ -51,6 +51,7 @@ const postInput = document.getElementById("postInput");
 const postButton = document.getElementById("postButton");
 const postList = document.querySelector(".post-list");
 let approvedPostsCache = [];
+let openCommentsFor = null;
 
 function getLoggedInUser() {
   const session = localStorage.getItem("confess_current_user");
@@ -86,6 +87,19 @@ function findCachedPost(postId) {
   return approvedPostsCache.find((post) => post.id === postId) || null;
 }
 
+function formatPostTimestamp(createdAt) {
+  if (!createdAt) return "";
+  const date = createdAt.toDate ? createdAt.toDate() : new Date(createdAt);
+  return date.toLocaleString("vi-VN", {
+    hour12: false,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 async function loadApprovedPosts() {
   postList.innerHTML = "";
 
@@ -117,6 +131,10 @@ async function loadApprovedPosts() {
       const postItem = document.createElement("div");
       postItem.className = "post-item";
       postItem.innerHTML = `
+            <div class="post-meta">
+              <strong>${data.authorName || "Người dùng ẩn danh"}</strong>
+              ${data.createdAt ? `· ${formatPostTimestamp(data.createdAt)}` : ""}
+            </div>
             <p class="post-content">${data.content}</p>
             <div class="actions">
               <span class="action-btn like-btn" onclick="toggleLike('${data.id}')">❤️ ${data.likes || 0}</span>
@@ -134,6 +152,14 @@ async function loadApprovedPosts() {
           `;
       postList.appendChild(postItem);
     });
+
+    if (openCommentsFor) {
+      const section = document.getElementById(`comments-${openCommentsFor}`);
+      if (section) {
+        section.style.display = "block";
+        renderComments(openCommentsFor);
+      }
+    }
   } catch (error) {
     if (isPermissionError(error)) {
       console.error("Firestore permission error:", error);
@@ -179,8 +205,10 @@ window.toggleLike = async (postId) => {
 window.openCommentForm = (postId) => {
   const section = document.getElementById(`comments-${postId}`);
   if (section) {
-    section.style.display = section.style.display === "none" ? "block" : "none";
-    if (section.style.display === "block") {
+    const isOpen = section.style.display === "block";
+    section.style.display = isOpen ? "none" : "block";
+    openCommentsFor = isOpen ? null : postId;
+    if (!isOpen) {
       renderComments(postId);
     }
   }
@@ -200,11 +228,13 @@ window.addComment = async (postId) => {
         id: Date.now().toString(),
         text: commentText,
         reported: false,
-        createdAt: serverTimestamp(),
+        createdAt: Date.now(),
         authorId: currentUserId,
+        authorName: currentUserName,
       }),
     });
     if (input) input.value = "";
+    openCommentsFor = postId;
     await loadApprovedPosts();
   } catch (error) {
     console.error("Comment failed:", error);
@@ -231,7 +261,7 @@ window.renderComments = (postId) => {
     const commentEl = document.createElement("div");
     commentEl.className = "comment-item";
     commentEl.innerHTML = `
-            <p>${comment.text}</p>
+            <p><strong>${comment.authorName || "Người dùng"}:</strong> ${comment.text}</p>
             <span class="comment-action" onclick="reportComment('${postId}', '${comment.id}')">🚫 Report</span>
           `;
     listContainer.appendChild(commentEl);

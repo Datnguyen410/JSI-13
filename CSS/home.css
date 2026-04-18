@@ -112,6 +112,16 @@ button {
   border: 1px solid #333;
 }
 
+.post-meta {
+  color: #cbd5e1;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.post-meta strong {
+  color: #f8fafc;
+}
+
 .post-content {
   margin: 0 0 10px 0;
   word-wrap: break-word;

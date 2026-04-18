@@ -231,7 +231,7 @@ function saveNotifications(notifications) {
   localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications));
 }
 
-// 🔔 HÀM GỬI THÔNG BÁO (Dòng này là chính)
+// HÀM GỬI THÔNG BÁO (Dòng này là chính)
 window.sendNotification = (postId) => {
   const posts = getLocalPosts();
   const post = posts.find((p) => p.id === postId);
@@ -248,7 +248,8 @@ window.sendNotification = (postId) => {
   const notification = {
     id: Date.now().toString(),
     postId: postId,
-    userId: post.userId,
+    userId: post.authorId || post.userId || "unknown",
+    authorName: post.authorName || "Người dùng ẩn danh",
     content: post.content,
     message:
       "Bài đăng của bạn đang chờ duyệt từ admin. Vui lòng chủ động check lại.",

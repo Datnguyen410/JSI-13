@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Posts</title>
+    <link rel="stylesheet" href="../CSS/admin.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="sidebar">
+        <h2>🔥 Admin</h2>
+        <a href="./admin.html">Dashboard</a>
+        <a href="./admin-posts.html">Posts</a>
+        <a href="#">Users</a>
+      </div>
+
+      <div class="main">
+        <div class="header">📌 Quản lý bài đăng</div>
+
+        <div class="card" style="margin-bottom: 20px">
+          <h3>Đăng bài dưới tên Admin</h3>
+          <textarea
+            id="adminContent"
+            rows="4"
+            placeholder="Viết nội dung bài đăng..."
+            style="
+              width: 100%;
+              padding: 12px;
+              border-radius: 10px;
+              border: 1px solid #334155;
+              background: #0f172a;
+              color: #fff;
+            "
+          ></textarea>
+          <button id="adminPostButton" class="approve" style="margin-top: 12px">
+            Đăng bài Admin
+          </button>
+        </div>
+
+        <div id="adminPostList"></div>
+      </div>
+    </div>
+
+    <script type="module" src="../JS/admin-posts.js"></script>
+  </body>
+</html>

@@ -12,8 +12,6 @@ import {
   deleteDoc,
   doc,
 } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
@@ -33,8 +31,6 @@ const analytics = getAnalytics(app);
 const db = getFirestore(app);
 
 const container = document.getElementById("adminPosts");
-const STORAGE_KEY = "confess_posts_demo";
-let useFirestore = true;
 
 function isPermissionError(error) {
   return (
@@ -43,227 +39,74 @@ function isPermissionError(error) {
   );
 }
 
-function getLocalPosts() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  return raw ? JSON.parse(raw) : [];
-}
-
-function saveLocalPosts(posts) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
-}
-
 async function loadPosts() {
   container.innerHTML = "";
 
-  if (useFirestore) {
-    try {
-      const q = query(
-        collection(db, "posts"),
-        where("status", "==", "pending"),
-      );
+  try {
+    const q = query(collection(db, "posts"), where("status", "==", "pending"));
 
-      const snapshot = await getDocs(q);
+    const snapshot = await getDocs(q);
 
-      if (snapshot.empty) {
-        container.innerHTML = `<div class="card"><p>Không có bài nào đang chờ duyệt.</p></div>`;
-        return;
-      }
-
-      snapshot.forEach((d) => {
-        const data = d.data();
-
-        const div = document.createElement("div");
-        div.className = "card";
-
-        div.innerHTML = `
-              <p>${data.content}</p>
-              <div class="actions">
-                <button class="approve" onclick="approve('${d.id}')">Duyệt</button>
-                <button class="reject" onclick="reject('${d.id}')">Từ chối</button>
-                <button class="notify" onclick="sendNotification('${d.id}')">📬 Thông báo</button>
-                <button class="delete" onclick="deletePost('${d.id}')">Xoá</button>
-              </div>
-            `;
-
-        container.appendChild(div);
-      });
+    if (snapshot.empty) {
+      container.innerHTML = `<div class="card"><p>Không có bài nào đang chờ duyệt.</p></div>`;
       return;
-    } catch (error) {
-      if (isPermissionError(error)) {
-        useFirestore = false;
-        console.warn(
-          "Switching to demo fallback because of Firestore permissions.",
-          error,
-        );
-      } else {
-        throw error;
-      }
     }
+
+    snapshot.forEach((d) => {
+      const data = d.data();
+
+      const div = document.createElement("div");
+      div.className = "card";
+
+      div.innerHTML = `
+            <p>${data.content}</p>
+            <div class="actions">
+              <button class="approve" onclick="approve('${d.id}')">Duyệt</button>
+              <button class="reject" onclick="reject('${d.id}')">Từ chối</button>
+              <button class="delete" onclick="deletePost('${d.id}')">Xoá</button>
+            </div>
+          `;
+
+      container.appendChild(div);
+    });
+  } catch (error) {
+    console.error("Error loading posts:", error);
+    container.innerHTML = `<div class="card"><p>Lỗi khi tải bài đăng: ${error.message}</p></div>`;
   }
-
-  const posts = getLocalPosts()
-    .filter((post) => post.status === "pending")
-    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-
-  if (posts.length === 0) {
-    container.innerHTML = `<div class="card"><p>Không có bài nào đang chờ duyệt.</p></div>`;
-    return;
-  }
-
-  posts.forEach((data) => {
-    const div = document.createElement("div");
-    div.className = "card";
-
-    div.innerHTML = `
-          <p>${data.content}</p>
-          <div class="actions">
-            <button class="approve" onclick="approve('${data.id}')">Duyệt</button>
-            <button class="reject" onclick="reject('${data.id}')">Từ chối</button>
-            <button class="notify" onclick="sendNotification('${data.id}')">Thông báo</button>
-            <button class="delete" onclick="deletePost('${data.id}')">Xoá</button>
-          </div>
-        `;
-
-    container.appendChild(div);
-  });
-}
-
-async function updateLocalPost(id, changes) {
-  const posts = getLocalPosts();
-  const index = posts.findIndex((item) => item.id === id);
-  if (index !== -1) {
-    posts[index] = { ...posts[index], ...changes };
-    saveLocalPosts(posts);
-  }
-}
-
-async function deleteLocalPost(id) {
-  const posts = getLocalPosts().filter((item) => item.id !== id);
-  saveLocalPosts(posts);
 }
 
 window.approve = async (id) => {
-  if (useFirestore) {
-    try {
-      await updateDoc(doc(db, "posts", id), {
-        status: "approved",
-      });
-      await loadPosts();
-      return;
-    } catch (error) {
-      if (isPermissionError(error)) {
-        useFirestore = false;
-        console.warn(
-          "Switching to demo fallback because of Firestore permissions.",
-          error,
-        );
-      } else {
-        throw error;
-      }
-    }
+  try {
+    await updateDoc(doc(db, "posts", id), {
+      status: "approved",
+    });
+    await loadPosts();
+  } catch (error) {
+    console.error("Error approving post:", error);
+    alert("Lỗi khi duyệt bài: " + error.message);
   }
-
-  await updateLocalPost(id, { status: "approved" });
-  await loadPosts();
 };
 
 window.reject = async (id) => {
-  if (useFirestore) {
-    try {
-      await updateDoc(doc(db, "posts", id), {
-        status: "rejected",
-      });
-      await loadPosts();
-      return;
-    } catch (error) {
-      if (isPermissionError(error)) {
-        useFirestore = false;
-        console.warn(
-          "Switching to demo fallback because of Firestore permissions.",
-          error,
-        );
-      } else {
-        throw error;
-      }
-    }
+  try {
+    await updateDoc(doc(db, "posts", id), {
+      status: "rejected",
+    });
+    await loadPosts();
+  } catch (error) {
+    console.error("Error rejecting post:", error);
+    alert("Lỗi khi từ chối bài: " + error.message);
   }
-
-  await updateLocalPost(id, { status: "rejected" });
-  await loadPosts();
 };
 
 window.deletePost = async (id) => {
-  if (useFirestore) {
-    try {
-      await deleteDoc(doc(db, "posts", id));
-      await loadPosts();
-      return;
-    } catch (error) {
-      if (isPermissionError(error)) {
-        useFirestore = false;
-        console.warn(
-          "Switching to demo fallback because of Firestore permissions.",
-          error,
-        );
-      } else {
-        throw error;
-      }
-    }
+  try {
+    await deleteDoc(doc(db, "posts", id));
+    await loadPosts();
+  } catch (error) {
+    console.error("Error deleting post:", error);
+    alert("Lỗi khi xóa bài: " + error.message);
   }
-
-  await deleteLocalPost(id);
-  await loadPosts();
 };
-
-// TÍNH NĂNG: Admin gửi thông báo cho người dùng có bài chờ duyệt
-// ===================================================================
-// Lưu thông báo vào localStorage với key: "confess_notifications"
-const NOTIFICATIONS_KEY = "confess_notifications";
-
-// Hàm lấy tất cả thông báo từ localStorage
-function getNotifications() {
-  const raw = localStorage.getItem(NOTIFICATIONS_KEY);
-  return raw ? JSON.parse(raw) : [];
-}
-
-// Hàm lưu thông báo vào localStorage
-function saveNotifications(notifications) {
-  localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications));
-}
-
-// HÀM GỬI THÔNG BÁO (Dòng này là chính)
-window.sendNotification = (postId) => {
-  const posts = getLocalPosts();
-  const post = posts.find((p) => p.id === postId);
-
-  if (!post) {
-    alert("Không tìm thấy bài đăng.");
-    return;
-  }
-
-  // Lấy danh sách thông báo hiện tại
-  const notifications = getNotifications();
-
-  // 👤 Tạo thông báo mới với userId của người tạo bài
-  const notification = {
-    id: Date.now().toString(),
-    postId: postId,
-    userId: post.authorId || post.userId || "unknown",
-    authorName: post.authorName || "Người dùng ẩn danh",
-    content: post.content,
-    message:
-      "Bài đăng của bạn đang chờ duyệt từ admin. Vui lòng chủ động check lại.",
-    timestamp: Date.now(),
-    read: false,
-  };
-
-  // Thêm vào danh sách
-  notifications.push(notification);
-  saveNotifications(notifications);
-
-  // Thông báo cho admin
-  alert(`Admin nhắc elm 😠: "${post.content.substring(0, 30)}..."`);
-};
-// ===================================================================
 
 loadPosts();

@@ -31,12 +31,38 @@ const analytics = getAnalytics(app);
 const db = getFirestore(app);
 
 const container = document.getElementById("adminPosts");
+const usersContainer = document.getElementById("usersContainer");
+const navLinks = document.querySelectorAll(".nav-link");
 
 function isPermissionError(error) {
   return (
     error?.code === "permission-denied" ||
     /permission/i.test(error?.message || "")
   );
+}
+
+async function loadStats() {
+  try {
+    const usersSnapshot = await getDocs(collection(db, "users"));
+    document.getElementById("userCount").textContent = usersSnapshot.size;
+
+    const pendingQuery = query(
+      collection(db, "posts"),
+      where("status", "==", "pending"),
+    );
+    const pendingSnapshot = await getDocs(pendingQuery);
+    document.getElementById("pendingCount").textContent = pendingSnapshot.size;
+
+    const approvedQuery = query(
+      collection(db, "posts"),
+      where("status", "==", "approved"),
+    );
+    const approvedSnapshot = await getDocs(approvedQuery);
+    document.getElementById("approvedCount").textContent =
+      approvedSnapshot.size;
+  } catch (error) {
+    console.error("Error loading stats:", error);
+  }
 }
 
 async function loadPosts() {
@@ -81,6 +107,7 @@ window.approve = async (id) => {
       status: "approved",
     });
     await loadPosts();
+    await loadStats();
   } catch (error) {
     console.error("Error approving post:", error);
     alert("Lỗi khi duyệt bài: " + error.message);
@@ -93,6 +120,7 @@ window.reject = async (id) => {
       status: "rejected",
     });
     await loadPosts();
+    await loadStats();
   } catch (error) {
     console.error("Error rejecting post:", error);
     alert("Lỗi khi từ chối bài: " + error.message);
@@ -103,10 +131,91 @@ window.deletePost = async (id) => {
   try {
     await deleteDoc(doc(db, "posts", id));
     await loadPosts();
+    await loadStats();
   } catch (error) {
     console.error("Error deleting post:", error);
     alert("Lỗi khi xóa bài: " + error.message);
   }
 };
 
+async function loadUsers() {
+  usersContainer.innerHTML = "";
+
+  try {
+    const usersSnapshot = await getDocs(collection(db, "users"));
+
+    if (usersSnapshot.empty) {
+      usersContainer.innerHTML = `<div class="card"><p>Không có người dùng nào.</p></div>`;
+      return;
+    }
+
+    const usersData = [];
+
+    for (const userDoc of usersSnapshot.docs) {
+      const user = { id: userDoc.id, ...userDoc.data() };
+
+      // Count posts
+      const postsQuery = query(
+        collection(db, "posts"),
+        where("authorId", "==", user.id),
+      );
+      const postsSnapshot = await getDocs(postsQuery);
+      const postCount = postsSnapshot.size;
+
+      // Calculate interactions: sum of likes, reposts, comments
+      let totalInteractions = 0;
+      postsSnapshot.forEach((postDoc) => {
+        const post = postDoc.data();
+        totalInteractions +=
+          (post.likes || 0) +
+          (post.reposts || 0) +
+          (post.comments ? post.comments.length : 0);
+      });
+
+      usersData.push({
+        name: user.name || user.email,
+        postCount,
+        interactions: totalInteractions,
+      });
+    }
+
+    usersData.forEach((user) => {
+      const div = document.createElement("div");
+      div.className = "card";
+      div.innerHTML = `
+        <p><strong>Tên:</strong> ${user.name}</p>
+        <p><strong>Số bài đã đăng:</strong> ${user.postCount}</p>
+        <p><strong>Số lượt tương tác:</strong> ${user.interactions}</p>
+      `;
+      usersContainer.appendChild(div);
+    });
+  } catch (error) {
+    console.error("Error loading users:", error);
+    usersContainer.innerHTML = `<div class="card"><p>Lỗi khi tải người dùng: ${error.message}</p></div>`;
+  }
+}
+loadStats();
 loadPosts();
+
+// Navigation
+navLinks.forEach((link) => {
+  link.addEventListener("click", (e) => {
+    e.preventDefault();
+    navLinks.forEach((l) => l.classList.remove("active"));
+    link.classList.add("active");
+
+    const sections = document.querySelectorAll(".content-section");
+    sections.forEach((s) => (s.style.display = "none"));
+    document.querySelector(".stats-grid").style.display = "none";
+
+    if (link.textContent.includes("Dashboard")) {
+      document.querySelector(".stats-grid").style.display = "grid";
+      document.querySelector(".content-section").style.display = "block";
+    } else if (link.textContent.includes("Users")) {
+      document.getElementById("usersSection").style.display = "block";
+      loadUsers();
+    } else if (link.textContent.includes("Posts")) {
+      window.location.href = "./admin-posts.html";
+    }
+  });
+});

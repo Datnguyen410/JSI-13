@@ -167,6 +167,7 @@ async function addLocalPost(content) {
     createdAt: Date.now(),
     likes: 0,
     reposts: 0,
+    repostedBy: [],
     comments: [],
     reportCount: 0,
   });
@@ -280,6 +281,7 @@ adminPostButton.addEventListener("click", async () => {
         createdAt: serverTimestamp(),
         likes: 0,
         reposts: 0,
+        repostedBy: [],
         comments: [],
         reportCount: 0,
       });

@@ -65,7 +65,7 @@ async function loadStats() {
   }
 }
 
-async function loadPosts() {
+async function loadPosts() { //tải các bài đăng đang chờ duyệt từ Firestore và hiển thị chúng trong phần quản trị.
   container.innerHTML = "";
 
   try {
@@ -101,7 +101,7 @@ async function loadPosts() {
   }
 }
 
-window.approve = async (id) => {
+window.approve = async (id) => { //cập nhật trạng thái của bài đăng thành "approved" trong Firestore khi admin duyệt bài, sau đó tải lại danh sách bài đăng và thống kê.
   try {
     await updateDoc(doc(db, "posts", id), {
       status: "approved",
@@ -114,7 +114,7 @@ window.approve = async (id) => {
   }
 };
 
-window.reject = async (id) => {
+window.reject = async (id) => { //cập nhật trạng thái của bài đăng thành "rejected" trong Firestore khi admin từ chối bài, sau đó tải lại danh sách bài đăng và thống kê.
   try {
     await updateDoc(doc(db, "posts", id), {
       status: "rejected",
@@ -126,8 +126,8 @@ window.reject = async (id) => {
     alert("Lỗi khi từ chối bài: " + error.message);
   }
 };
-
-window.deletePost = async (id) => {
+//xóa
+window.deletePost = async (id) => { //xóa bài đăng khỏi Firestore khi admin chọn xóa, sau đó tải lại danh sách bài đăng và thống kê.
   try {
     await deleteDoc(doc(db, "posts", id));
     await loadPosts();
@@ -154,7 +154,7 @@ async function loadUsers() {
     for (const userDoc of usersSnapshot.docs) {
       const user = { id: userDoc.id, ...userDoc.data() };
 
-      // Count posts
+      // đếm số bài đăng của người dùng
       const postsQuery = query(
         collection(db, "posts"),
         where("authorId", "==", user.id),

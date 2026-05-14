@@ -62,7 +62,7 @@ const loggedInUser = getLoggedInUser();
 const currentUserId = loggedInUser?.id || "anonymous";
 const currentUserName = loggedInUser?.name || "Người dùng ẩn danh";
 
-function buildPostPayload(content) {
+function buildPostPayload(content) { //xây dựng đối tượng bài đăng mới với các trường cần thiết (nd , tgian , tg , lthich ,share ,bl)
   return {
     content,
     authorId: currentUserId,
@@ -71,6 +71,7 @@ function buildPostPayload(content) {
     createdAt: serverTimestamp(),
     likes: 0,
     reposts: 0,
+    repostedBy: [],
     comments: [],
     reportCount: 0,
   };
@@ -87,7 +88,7 @@ function findCachedPost(postId) {
   return approvedPostsCache.find((post) => post.id === postId) || null;
 }
 
-function formatPostTimestamp(createdAt) {
+function formatPostTimestamp(createdAt) { //định dạng thời gian hiển thị thời gian
   if (!createdAt) return "";
   const date = createdAt.toDate ? createdAt.toDate() : new Date(createdAt);
   return date.toLocaleString("vi-VN", {
@@ -128,11 +129,17 @@ async function loadApprovedPosts() {
       });
 
     approvedPostsCache.forEach((data) => {
+      const authorLabel =
+        data.authorId && data.authorId !== "anonymous"
+          ? `<a class="author-link" href="./profile.html?userId=${encodeURIComponent(data.authorId)}">${data.authorName || "Người dùng ẩn danh"}</a>` 
+          //nếu có authorId và khác "anonymous" thì hiển thị tên tác giả dưới dạng liên kết đến trang profile của họ, nếu không thì hiển thị "Người dùng ẩn danh".
+          : `${data.authorName || "Người dùng ẩn danh"}`;
+
       const postItem = document.createElement("div");
       postItem.className = "post-item";
       postItem.innerHTML = `
             <div class="post-meta">
-              <strong>${data.authorName || "Người dùng ẩn danh"}</strong>
+              <strong>${authorLabel}</strong>
               ${data.createdAt ? `· ${formatPostTimestamp(data.createdAt)}` : ""}
             </div>
             <p class="post-content">${data.content}</p>
@@ -276,6 +283,7 @@ window.toggleRepost = async (postId) => {
   try {
     await updateDoc(doc(db, "posts", postId), {
       reposts: increment(1),
+      repostedBy: arrayUnion(currentUserId),
     });
     await loadApprovedPosts();
   } catch (error) {

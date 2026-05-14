@@ -230,6 +230,37 @@ button {
   font-size: 12px;
 }
 
+.author-link {
+  color: #7dd3fc;
+  text-decoration: none;
+}
+
+.author-link:hover {
+  text-decoration: underline;
+}
+
+.profile-summary,
+.profile-section {
+  background: #181818;
+  padding: 16px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  border: 1px solid #2d2d2d;
+}
+
+.profile-card h2 {
+  margin-top: 0;
+}
+
+.profile-card p {
+  margin: 8px 0;
+}
+
+.posts-container {
+  display: grid;
+  gap: 12px;
+}
+
 /* 🔔 SCSS cho thông báo từ admin */
 #notificationBox {
   margin-bottom: 15px;

@@ -138,7 +138,7 @@ window.deletePost = async (id) => { //xóa bài đăng khỏi Firestore khi admi
   }
 };
 
-async function loadUsers() {
+async function loadUsers() { //tải danh sách người dùng từ Firestore và hiển thị thông tin cơ bản của họ, bao gồm tên, số lượng bài đăng đã đăng và số lượt tương tác .
   usersContainer.innerHTML = "";
 
   try {
